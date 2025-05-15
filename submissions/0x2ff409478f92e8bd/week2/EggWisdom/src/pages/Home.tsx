@@ -7,9 +7,29 @@ import { EggPreview } from '../components/EggPreview';
 import { Leaderboard } from '../components/Leaderboard';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
+import { useQuery } from '@tanstack/react-query';
+import { FlowService } from '../services/flow-service';
+import { useState, useEffect } from 'react';
 
 export const Home = () => {
   const { loggedIn } = useAuth();
+  const [wisdomImg, setWisdomImg] = useState('https://via.placeholder.com/600x300?text=EggWisdom+Hero');
+  const [wisdomText, setWisdomText] = useState('');
+  
+  const { data: wisdom } = useQuery({
+    queryKey: ['wisdom'],
+    queryFn: FlowService.getWisdom,
+    enabled: true,
+    refetchInterval: 60000, // Refetch every minute
+  });
+  
+  useEffect(() => {
+    if (wisdom) {
+      console.log(wisdom);
+      setWisdomImg(`data:image/png;base64,${wisdom.base64Img}` || 'https://via.placeholder.com/600x300?text=EggWisdom+Hero');
+      setWisdomText(wisdom.phrase || '');
+    }
+  }, [wisdom]);
   
   return (
     <div className="min-h-screen bg-egg-light flex flex-col">
@@ -38,10 +58,13 @@ export const Home = () => {
               Connect your Flow wallet to get started with minting, uploading, and earning Zen tokens!
             </p>
             <img 
-              src="https://via.placeholder.com/600x300?text=EggWisdom+Hero" 
+              src={wisdomImg} 
               alt="EggWisdom" 
               className="rounded-xl shadow-lg mx-auto"
             />
+            {wisdomText && (
+              <p className="mt-4 text-egg-purple italic">{wisdomText}</p>
+            )}
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

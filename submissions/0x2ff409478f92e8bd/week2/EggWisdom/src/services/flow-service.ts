@@ -3,7 +3,7 @@ import { FLOW_ADDRESSES } from "./fcl-config";
 
 // Transaction scripts
 const mintEggWisdomTx = `
-import EggWisdom from 0xEggWisdom
+import EggWisdom from 0xed1691ab54f4f8d4
 
 transaction {
   prepare(acct: AuthAccount) {
@@ -31,7 +31,7 @@ transaction {
 `;
 
 const mintWisdomPhraseTx = `
-import EggWisdom from 0xEggWisdom
+import EggWisdom from 0xed1691ab54f4f8d4
 
 transaction {
   prepare(acct: AuthAccount) {
@@ -59,7 +59,7 @@ transaction {
 `;
 
 const uploadWisdomImageTx = `
-import EggWisdom from 0xEggWisdom
+import EggWisdom from 0xed1691ab54f4f8d4
 
 transaction(imageBase64: String, players: [String], cats: [String]) {
   prepare(acct: AuthAccount) {
@@ -74,7 +74,7 @@ transaction(imageBase64: String, players: [String], cats: [String]) {
 `;
 
 const petEggWisdomTx = `
-import EggWisdom from 0xEggWisdom
+import EggWisdom from 0xed1691ab54f4f8d4
 
 transaction(eggId: UInt64) {
   prepare(acct: AuthAccount) {
@@ -89,9 +89,17 @@ transaction(eggId: UInt64) {
 `;
 
 // Query scripts
+const getWisdomScript = `
+import EggWisdom from 0xed1691ab54f4f8d4
+
+access(all) fun main(): EggWisdom.PhraseStruct? {
+    return EggWisdom.getWisdom()
+}
+`;
+
 const getUserDataScript = `
-import EggWisdom from 0xEggWisdom
-import ZenToken from 0xEggWisdom
+import EggWisdom from 0xed1691ab54f4f8d4
+import ZenToken from 0xed1691ab54f4f8d4
 
 pub struct UserData {
   pub let address: Address
@@ -172,7 +180,7 @@ pub fun main(address: Address): UserData {
 `;
 
 const getLeaderboardScript = `
-import ZenToken from 0xEggWisdom
+import ZenToken from 0xed1691ab54f4f8d4
 
 pub struct LeaderboardEntry {
   pub let address: Address
@@ -274,6 +282,12 @@ export const FlowService = {
   },
 
   // Queries
+  getWisdom: async () => {
+    return fcl.query({
+      cadence: getWisdomScript
+    });
+  },
+
   getUserData: async (address: string) => {
     return fcl.query({
       cadence: getUserDataScript,
