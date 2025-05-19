@@ -38,6 +38,8 @@ contract EggWisdom: NonFungibleToken, ViewResolver {
     access(self) var totalPhrases: UInt64
     /// The RandomConsumer.Consumer resource used to request & fulfill randomness
     access(self) let consumer: @RandomConsumer.Consumer
+    // Boosted users
+    access(self) var boostedUsers: {Address: Boost}
     // -----------------------------------------------------------------------
     // EggWisdom contract Events
     // ----------------------------------------------------------------------- 
@@ -202,7 +204,7 @@ contract EggWisdom: NonFungibleToken, ViewResolver {
             WisdomTreasury.deposit(from: <- payment)
             if self.owner?.address == phaseStruct.uploader {
                 let WisdomTreasury = EggWisdom.account.storage.borrow<auth(FungibleToken.Withdraw) &{FungibleToken.Vault}>(from: /storage/flowTokenVault)!
-                let payment <- WisdomTreasury.withdraw(amount: 0.01)
+                let payment <- WisdomTreasury.withdraw(amount: 0.02)
                 WisdomTreasury.deposit(from: <- payment)
             }
 
@@ -215,7 +217,7 @@ contract EggWisdom: NonFungibleToken, ViewResolver {
             let wisdomZen = EggWisdom.account.storage.borrow<auth(Zen.MinterEntitlement) &Zen.Minter>(from: Zen.TokenMinterStoragePath)!
             let UserZen = getAccount(phaseStruct.uploader).capabilities.borrow<&Zen.Vault>(Zen.TokenPublicReceiverPath)!
 
-            let zen <- wisdomZen.mintTokens(amount: 100.0)
+            let zen <- wisdomZen.mintTokens(amount: 10.0)
             UserZen.deposit(from: <- zen)
             // Emit event
             emit WisdomEggPetted(id: self.id, phrase: phaseStruct.phrase, petter: self.owner?.address!)
@@ -433,6 +435,16 @@ contract EggWisdom: NonFungibleToken, ViewResolver {
             // EggWisdom.phrases[phrase] = newMetadata.id
         } 
     }
+
+    access(all)
+    struct Boost {
+        access(all) var boost: UFix64
+        access(all) var end: UFix64
+        init(modifier: UFix64, days: UFix64) {
+            self.boost = modifier
+            self.end = getCurrentBlock().timestamp * (86400.0 * days)
+        }
+    }
     // -----------------------------------------------------------------------
     // Wisdom Egg Storage Resource
     // -----------------------------------------------------------------------
@@ -440,15 +452,11 @@ contract EggWisdom: NonFungibleToken, ViewResolver {
         // List of Eggs 
 		access(self) var Eggs: @[Egg]    
         access(self) let poolPath: PublicPath  
-        access(self) let pool: @FlowToken.Vault
 
         init() {
             let identifier = "EggWisdom_".concat(self.uuid.toString())
             self.poolPath = PublicPath(identifier: identifier)!
             self.Eggs <- []
-            // Create storage slot for distribution of royalties
-            let pool <-  FlowToken.createEmptyVault(vaultType: Type<@FlowToken.Vault>())
-            self.pool <- pool
         }
 		// Deposit takes a Egg and adds it to the storage list
 		access(all) fun deposit(Egg: @Egg) {
@@ -480,17 +488,13 @@ contract EggWisdom: NonFungibleToken, ViewResolver {
             let Egg <- create Egg(request: <-request)
             // Get contract's Vault
             let WisdomTreasury = getAccount(EggWisdom.account.address).capabilities.borrow<&{FungibleToken.Receiver}>(/public/flowTokenReceiver)!
-            // Get money for Royalty
-            let poolRoyalties<- payment.withdraw(amount: 0.5)
             // Deposit the Flow into the account
             WisdomTreasury.deposit(from: <- payment)
-            // Deposit the Flow into the pool
-            self.pool.deposit(from: <- poolRoyalties)
             // Deposit the Egg
             self.deposit(Egg: <- Egg)
             let wisdomZen = EggWisdom.account.storage.borrow<auth(Zen.MinterEntitlement) &Zen.Minter>(from: Zen.TokenMinterStoragePath)!
             let UserZen = getAccount(self.owner?.address!).capabilities.borrow<&Zen.Vault>(Zen.TokenPublicReceiverPath)!
-            let zen <- wisdomZen.mintTokens(amount: 250.0)
+            let zen <- wisdomZen.mintTokens(amount: 100.0)
             UserZen.deposit(from: <- zen)
         }
         /* --- Reveal --- */
@@ -521,12 +525,18 @@ contract EggWisdom: NonFungibleToken, ViewResolver {
             let storage = EggWisdom.account.storage.borrow<&EggWisdom.PhraseStorage>(from: EggWisdom.PhraseStoragePath)!
             // Get random Wisdom Egg metadata
             let phaseStruct = storage.getPhrase(phraseID: phraseSlot)!
-            // Deposit royalties into this Phrase's creator
-            let poolRoyalties <- self.pool.withdraw(amount: 0.5)
+            // Get wisdomEgg's Flow treasury vault to withdraw royalties    
+            let wisdomTreasury = EggWisdom.account.capabilities.borrow<auth(FungibleToken.Withdraw) &FlowToken.Vault>(/public/flowTokenReceiver)!
+
             // Get account's Vault
             let accountReceiver = getAccount(phaseStruct.uploader).capabilities.borrow<&{FungibleToken.Receiver}>(/public/flowTokenReceiver)!
-            // Deposit the Flow into the account
-            accountReceiver.deposit(from: <- poolRoyalties)
+            if EggWisdom.boostedUsers[phaseStruct.uploader]!.end < getCurrentBlock().timestamp {
+                let boost = EggWisdom.boostedUsers[phaseStruct.uploader]!
+                accountReceiver.deposit(from: <- wisdomTreasury.withdraw(amount: (0.5 * boost.boost)))  
+            } else {
+                // Deposit the Flow into the account
+                accountReceiver.deposit(from: <- wisdomTreasury.withdraw(amount: 0.5))
+            }
             // Create a new NFT
             let nft <- create NFT(metadataStruct: phaseStruct)
             // Deposit the NFT into the recipient's collection
@@ -536,6 +546,18 @@ contract EggWisdom: NonFungibleToken, ViewResolver {
 
             let zen <- wisdomZen.mintTokens(amount: 250.0)
             UserZen.deposit(from: <- zen)
+        }
+        // Boost this user to get a 1.4x reward for 3 days
+        access(all) fun boostUser1(payment: @{FungibleToken.Vault}) {
+            pre {
+                payment.balance == 5000.0: "Payment is not 5000 Zen"
+            }
+            // Fetch Zen burner
+            let zenBurner = EggWisdom.account.storage.borrow<auth(Zen.BurnerEntitlement) &Zen.Burner>(from: Zen.TokenBurnerStoragePath)!
+            // Burn Zen
+            zenBurner.burnTokens(from: <- payment)
+            // Set timer
+            EggWisdom.boostedUsers[self.owner?.address!] = Boost(modifier: 1.4, days: 3.0)
         }
         // Get number of Eggs in storage
         access(all) fun getBalance(): Int {
@@ -758,6 +780,7 @@ contract EggWisdom: NonFungibleToken, ViewResolver {
         self.wisdomEgg = nil
         // Create a RandomConsumer.Consumer resource
         self.consumer <-RandomConsumer.createConsumer()
+        self.boostedUsers = {}
         // Set the named paths
 		self.CollectionStoragePath = StoragePath(identifier: self.collectionInfo["identifier"] as! String)!
 		self.CollectionPublicPath = PublicPath(identifier: (self.collectionInfo["identifier"] as! String).concat("CollectionPublic"))!

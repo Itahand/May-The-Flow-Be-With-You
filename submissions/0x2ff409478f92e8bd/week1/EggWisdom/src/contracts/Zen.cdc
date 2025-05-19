@@ -33,6 +33,10 @@ contract Zen: FungibleToken{
     access(all)
     let TokenMinterStoragePath: StoragePath
 
+    // Defines token burner storage path
+    access(all)
+    let TokenBurnerStoragePath: StoragePath
+
     access(all)
     let AdminStoragePath: StoragePath
     
@@ -326,7 +330,7 @@ contract Zen: FungibleToken{
         self.TokenPublicBalancePath = /public/ZenBalance
         self.TokenMinterStoragePath = /storage/ZenMinter
         self.AdminStoragePath = /storage/ZenAdmin
-        
+        self.TokenBurnerStoragePath = /storage/ZenBurner
         // Create the Vault with the total supply of tokens and save it in storage
         let vault <- create Vault(balance: self.totalSupply)
         self.account.storage.save(<-vault, to: self.TokenStoragePath)
@@ -346,7 +350,9 @@ contract Zen: FungibleToken{
         // create a Minter resource and store it
         let minter <- create Minter()
         self.account.storage.save(<-minter, to: self.TokenMinterStoragePath)
-        
+        // create a Burner resource and store it
+        let burner <- create Burner()
+        self.account.storage.save(<-burner, to: self.TokenBurnerStoragePath)
         // Emit an event that shows that the contract was initialized
         emit TokensInitialized(initialSupply: self.totalSupply)
     }
